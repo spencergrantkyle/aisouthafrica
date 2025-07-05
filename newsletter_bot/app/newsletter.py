@@ -268,14 +268,39 @@ class MockNewsletterFetcher:
 
 
 class NewsletterFetcher:
-    """Main newsletter fetcher that tries multiple sources"""
+    """Main newsletter fetcher that tries multiple sources including Gmail"""
     
-    def __init__(self):
+    def __init__(self, enable_gmail: bool = True):
+        """
+        Initialize newsletter fetcher with multiple sources
+        
+        Args:
+            enable_gmail: Whether to enable Gmail fetching
+        """
         self.fetchers = [
             OpenLetterFetcher(),
         ]
+        
+        # Add Gmail fetcher if enabled and credentials available
+        if enable_gmail:
+            try:
+                from .gmail_fetcher import GmailNewsletterFetcher
+                import os
+                
+                # Check if Gmail credentials exist
+                if os.path.exists("credentials.json"):
+                    gmail_fetcher = GmailNewsletterFetcher()
+                    self.fetchers.insert(0, gmail_fetcher)  # Try Gmail first
+                    logger.info("📧 Gmail fetcher added as primary source")
+                else:
+                    logger.warning("⚠️ Gmail credentials not found, skipping Gmail integration")
+            except ImportError as e:
+                logger.warning(f"⚠️ Gmail integration not available: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize Gmail fetcher: {e}")
+        
         self.mock_fetcher = MockNewsletterFetcher()
-        logger.info("📰 Newsletter fetcher initialized with multiple sources")
+        logger.info(f"📰 Newsletter fetcher initialized with {len(self.fetchers)} sources")
     
     def fetch_latest_newsletter(self):
         """Fetch newsletter from available sources"""
@@ -284,13 +309,16 @@ class NewsletterFetcher:
         # Try each fetcher
         for i, fetcher in enumerate(self.fetchers):
             try:
-                logger.info(f"📡 Trying fetcher {i+1}/{len(self.fetchers)}...")
+                fetcher_name = fetcher.__class__.__name__
+                logger.info(f"📡 Trying {fetcher_name} ({i+1}/{len(self.fetchers)})...")
+                
                 content = fetcher.fetch_latest_newsletter()
                 if content and content['content'] and len(content['content']) > 100:
-                    logger.info(f"✅ Successfully fetched from source {i+1}")
+                    logger.info(f"✅ Successfully fetched from {fetcher_name}")
                     return content
+                    
             except Exception as e:
-                logger.warning(f"⚠️ Fetcher {i+1} failed: {e}")
+                logger.warning(f"⚠️ {fetcher_name} failed: {e}")
                 continue
         
         logger.warning("⚠️ All main fetchers failed, using mock content for testing")
